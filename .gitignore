@@ -60,3 +60,7 @@ yarn-error.log*
 *.swp
 *.swo
 .cursor/
+
+# Agent Skills
+backend/app/agents/skills/
+**/agents/skills/
