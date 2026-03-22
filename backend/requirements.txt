@@ -1,1 +1,12 @@
 # Requirements
+deepagents
+langgraph
+langchain-core
+fastapi
+uvicorn
+pydantic
+python-dotenv
+httpx
+markdownify
+tavily-python
+langchain
