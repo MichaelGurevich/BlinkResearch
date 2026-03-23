@@ -10,3 +10,5 @@ httpx
 markdownify
 tavily-python
 langchain
+langchain-cerebras
+langfuse
