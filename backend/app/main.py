@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 # Load the keys from the .env file
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-from agents.graph import research_agent
+from agents.orchestrator.agent import research_agent
 
 app = FastAPI(title="Deep Research Agent API")
 
