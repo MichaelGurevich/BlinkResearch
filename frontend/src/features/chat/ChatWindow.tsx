@@ -1,4 +1,4 @@
-import { Box, ButtonBase, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { useEffect, useRef } from 'react';
 import { AgentTaskPanel } from './AgentTaskPanel';
@@ -10,17 +10,9 @@ interface ChatWindowProps {
   messages: Message[];
   isLoading: boolean;
   progress: AgentRunProgress | null;
-  suggestions: string[];
-  onSuggestionSelect: (suggestion: string) => void;
 }
 
-export function ChatWindow({
-  messages,
-  isLoading,
-  progress,
-  suggestions,
-  onSuggestionSelect,
-}: ChatWindowProps) {
+export function ChatWindow({ messages, isLoading, progress }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const hasMessages = messages.length > 0;
 
@@ -83,66 +75,6 @@ export function ChatWindow({
             share the same calm, conversational feel.
           </Typography>
 
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: 'repeat(2, minmax(0, 1fr))',
-                md: 'repeat(4, minmax(0, 1fr))',
-              },
-              gap: 1.5,
-              alignItems: 'stretch',
-            }}
-          >
-            {suggestions.map((suggestion) => (
-              <ButtonBase
-                key={suggestion}
-                onClick={() => {
-                  if (!isLoading) {
-                    onSuggestionSelect(suggestion);
-                  }
-                }}
-                sx={(theme) => ({
-                  width: '100%',
-                  minHeight: 132,
-                  px: 2,
-                  py: 1.9,
-                  borderRadius: '18px',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  backgroundColor: alpha(
-                    theme.palette.background.paper,
-                    theme.palette.mode === 'dark' ? 0.34 : 0.88,
-                  ),
-                  alignItems: 'flex-start',
-                  justifyContent: 'flex-start',
-                  textAlign: 'left',
-                  transition:
-                    'border-color 180ms ease-out, background-color 180ms ease-out, transform 180ms ease-out',
-                  '&:hover': {
-                    borderColor: alpha(theme.palette.primary.main, 0.38),
-                    backgroundColor: alpha(
-                      theme.palette.background.paper,
-                      theme.palette.mode === 'dark' ? 0.5 : 0.98,
-                    ),
-                    transform: 'translateY(-1px)',
-                  },
-                })}
-              >
-                <Typography
-                  sx={{
-                    color: 'text.secondary',
-                    fontSize: 15,
-                    lineHeight: 1.5,
-                    fontWeight: 400,
-                  }}
-                >
-                  {suggestion}
-                </Typography>
-              </ButtonBase>
-            ))}
-          </Box>
         </Box>
       </Box>
     );

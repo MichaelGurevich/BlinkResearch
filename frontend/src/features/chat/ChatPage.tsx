@@ -9,6 +9,10 @@ import { ChatWindow } from './ChatWindow';
 import type { AgentRunProgress, AgentTodo, ApiKeySettings, Message } from './types';
 
 const API_KEYS_STORAGE_KEY = 'blinkresearch-api-keys';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/$/, '') ?? '';
+const AGENT_STREAM_PATH = '/api/agent/stream';
+
+const buildApiUrl = (path: string) => `${API_BASE_URL}${path}`;
 
 interface AgentStartedEvent {
   type: 'started';
@@ -41,7 +45,7 @@ const readAgentStream = async (
   apiKeys: ApiKeySettings,
   onEvent: (event: AgentStreamEvent) => void,
 ): Promise<void> => {
-  const response = await fetch('/api/agent/stream', {
+  const response = await fetch(buildApiUrl(AGENT_STREAM_PATH), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -95,21 +99,36 @@ const readAgentStream = async (
   }
 };
 
+const buildNetworkErrorMessage = (error: Error) => {
+  const endpoint = buildApiUrl(AGENT_STREAM_PATH) || AGENT_STREAM_PATH;
+
+  if (error instanceof TypeError) {
+    return `The API request could not reach the server.
+
+\`\`\`text
+${endpoint}
+\`\`\`
+
+This is usually a bad URL, a CORS block, or the App Runner service being unavailable.
+
+\`\`\`text
+${error.message}
+\`\`\``;
+  }
+
+  return `The API request failed.
+
+\`\`\`text
+${error.message}
+\`\`\``;
+};
+
 const createMessage = (role: 'user' | 'assistant', content: string): Message => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   role,
   content,
   timestamp: new Date(),
 });
-
-const promptSuggestions = [
-  'Extract and translate the text from this exam image.',
-  'Convert this assignment image into clean English notes.',
-  'Give me the English version of this handwritten page.',
-  'Translate and clean the content from this test image.',
-];
-
-const topNavItems = ['Chat', 'Research', 'Docs'];
 
 const getStoredApiKeys = (): ApiKeySettings => {
   if (typeof window === 'undefined') {
@@ -209,7 +228,7 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
       } catch (error) {
         const errorMessage =
           error instanceof Error
-            ? `The API request failed.\n\n\`\`\`text\n${error.message}\n\`\`\``
+            ? buildNetworkErrorMessage(error)
             : 'The API request failed due to an unknown error.';
 
         const assistantMessage = createMessage('assistant', errorMessage);
@@ -301,30 +320,6 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
         </Stack>
 
         <Stack direction="row" spacing={1} alignItems="center">
-          <Stack
-            direction="row"
-            spacing={2.25}
-            alignItems="center"
-            sx={{ display: { xs: 'none', md: 'flex' }, mr: 0.5 }}
-          >
-            {topNavItems.map((item) => (
-              <Typography
-                key={item}
-                sx={(theme) => ({
-                  fontSize: 13.5,
-                  fontWeight: item === 'Chat' ? 600 : 500,
-                  color:
-                    item === 'Chat'
-                      ? theme.palette.text.primary
-                      : alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.52 : 0.46),
-                  letterSpacing: '-0.01em',
-                })}
-              >
-                {item}
-              </Typography>
-            ))}
-          </Stack>
-
           <Tooltip title="API Keys" arrow>
             <IconButton
               size="small"
@@ -431,10 +426,6 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
         messages={messages}
         isLoading={isLoading}
         progress={progress}
-        suggestions={promptSuggestions}
-        onSuggestionSelect={(suggestion) => {
-          void handleSend(suggestion);
-        }}
       />
 
       <Box sx={{ position: 'sticky', bottom: 0 }}>
