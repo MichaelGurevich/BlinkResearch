@@ -1,1 +1,1 @@
-# Environment variables & AWS settings
+# Environment variables & deployment settings

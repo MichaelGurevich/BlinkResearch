@@ -139,7 +139,7 @@ def build_tavily_search_tool(
     summarization_model: BaseChatModel,
 ):
     """Create a Tavily search tool bound to a specific runtime API key."""
-    tavily_client = TavilyClient(api_key=tavily_api_key or os.environ.get("TAVILY_KEY"))
+    tavily_client = TavilyClient(api_key=tavily_api_key)
 
     @tool(parse_docstring=True)
     def tavily_search(

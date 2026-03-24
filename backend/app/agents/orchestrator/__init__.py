@@ -1,5 +1,5 @@
 """Orchestrator agent package."""
 
-from .agent import research_agent
+from .agent import build_research_agent
 
-__all__ = ["research_agent"]
+__all__ = ["build_research_agent"]
