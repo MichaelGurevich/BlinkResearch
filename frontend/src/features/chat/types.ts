@@ -1,4 +1,5 @@
 export type Role = 'user' | 'assistant' | 'system'
+export type TodoStatus = 'pending' | 'in_progress' | 'completed'
 
 export interface Message {
   id: string
@@ -17,4 +18,13 @@ export interface ConversationState {
 export interface ApiKeySettings {
   tavilyApiKey: string
   googleStudioApiKey: string
+}
+
+export interface AgentTodo {
+  content: string
+  status: TodoStatus
+}
+
+export interface AgentRunProgress {
+  todos: AgentTodo[]
 }

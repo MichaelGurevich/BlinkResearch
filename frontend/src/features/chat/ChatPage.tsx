@@ -6,21 +6,42 @@ import { useCallback, useState } from 'react';
 import { ApiKeysModal } from './ApiKeysModal';
 import { ChatInput } from './ChatInput';
 import { ChatWindow } from './ChatWindow';
-import type { ApiKeySettings, Message } from './types';
+import type { AgentRunProgress, AgentTodo, ApiKeySettings, Message } from './types';
 
 const API_KEYS_STORAGE_KEY = 'blinkresearch-api-keys';
 
-interface InvokeAgentResponse {
-  response: string;
+interface AgentStartedEvent {
+  type: 'started';
   thread_id: string;
 }
 
-const invokeAgent = async (
+interface AgentTodosEvent {
+  type: 'todos';
+  thread_id: string;
+  todos: AgentTodo[];
+}
+
+interface AgentFinalEvent {
+  type: 'final';
+  thread_id: string;
+  response: string;
+}
+
+interface AgentErrorEvent {
+  type: 'error';
+  thread_id: string;
+  error: string;
+}
+
+type AgentStreamEvent = AgentStartedEvent | AgentTodosEvent | AgentFinalEvent | AgentErrorEvent;
+
+const readAgentStream = async (
   query: string,
   threadId: string | null,
   apiKeys: ApiKeySettings,
-): Promise<InvokeAgentResponse> => {
-  const response = await fetch('/api/agent/invoke', {
+  onEvent: (event: AgentStreamEvent) => void,
+): Promise<void> => {
+  const response = await fetch('/api/agent/stream', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -40,7 +61,38 @@ const invokeAgent = async (
     throw new Error(errorText || `Request failed with status ${response.status}`);
   }
 
-  return response.json() as Promise<InvokeAgentResponse>;
+  if (!response.body) {
+    throw new Error('The server did not provide a readable response stream.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+    let newlineIndex = buffer.indexOf('\n');
+    while (newlineIndex !== -1) {
+      const line = buffer.slice(0, newlineIndex).trim();
+      buffer = buffer.slice(newlineIndex + 1);
+
+      if (line) {
+        onEvent(JSON.parse(line) as AgentStreamEvent);
+      }
+
+      newlineIndex = buffer.indexOf('\n');
+    }
+
+    if (done) {
+      const trailingLine = buffer.trim();
+      if (trailingLine) {
+        onEvent(JSON.parse(trailingLine) as AgentStreamEvent);
+      }
+      break;
+    }
+  }
 };
 
 const createMessage = (role: 'user' | 'assistant', content: string): Message => ({
@@ -103,6 +155,7 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [input, setInput] = useState('');
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<AgentRunProgress | null>(null);
   const [apiKeys, setApiKeys] = useState<ApiKeySettings>(getStoredApiKeys);
   const [draftApiKeys, setDraftApiKeys] = useState<ApiKeySettings>(getStoredApiKeys);
   const [isApiKeysModalOpen, setIsApiKeysModalOpen] = useState(
@@ -125,12 +178,33 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
       setMessages((previous) => [...previous, userMessage]);
       setInput('');
       setIsLoading(true);
+      setProgress({ todos: [] });
 
       try {
-        const response = await invokeAgent(trimmedInput, threadId, apiKeys);
-        setThreadId(response.thread_id);
+        let finalResponse = '';
 
-        const assistantMessage = createMessage('assistant', response.response);
+        await readAgentStream(trimmedInput, threadId, apiKeys, (event) => {
+          if (event.type === 'started') {
+            setThreadId(event.thread_id);
+            return;
+          }
+
+          if (event.type === 'todos') {
+            setThreadId(event.thread_id);
+            setProgress({ todos: event.todos });
+            return;
+          }
+
+          if (event.type === 'final') {
+            setThreadId(event.thread_id);
+            finalResponse = event.response;
+            return;
+          }
+
+          throw new Error(event.error);
+        });
+
+        const assistantMessage = createMessage('assistant', finalResponse || 'No response');
         setMessages((previous) => [...previous, assistantMessage]);
       } catch (error) {
         const errorMessage =
@@ -142,6 +216,7 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
         setMessages((previous) => [...previous, assistantMessage]);
       } finally {
         setIsLoading(false);
+        setProgress(null);
       }
     },
     [apiKeys, input, isLoading, threadId],
@@ -343,6 +418,7 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
                 setMessages([]);
                 setInput('');
                 setThreadId(null);
+                setProgress(null);
               }}
             >
               <Add fontSize="small" />
@@ -354,6 +430,7 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
       <ChatWindow
         messages={messages}
         isLoading={isLoading}
+        progress={progress}
         suggestions={promptSuggestions}
         onSuggestionSelect={(suggestion) => {
           void handleSend(suggestion);

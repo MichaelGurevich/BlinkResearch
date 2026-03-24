@@ -1,13 +1,15 @@
 import { Box, ButtonBase, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { useEffect, useRef } from 'react';
+import { AgentTaskPanel } from './AgentTaskPanel';
 import { MessageBubble } from './MessageBubble';
 import { ThinkingIndicator } from './ThinkingIndicator';
-import type { Message } from './types';
+import type { AgentRunProgress, Message } from './types';
 
 interface ChatWindowProps {
   messages: Message[];
   isLoading: boolean;
+  progress: AgentRunProgress | null;
   suggestions: string[];
   onSuggestionSelect: (suggestion: string) => void;
 }
@@ -15,6 +17,7 @@ interface ChatWindowProps {
 export function ChatWindow({
   messages,
   isLoading,
+  progress,
   suggestions,
   onSuggestionSelect,
 }: ChatWindowProps) {
@@ -23,7 +26,7 @@ export function ChatWindow({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, isLoading]);
+  }, [messages, isLoading, progress]);
 
   if (!hasMessages) {
     return (
@@ -151,6 +154,8 @@ export function ChatWindow({
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}
+
+        {isLoading && progress && <AgentTaskPanel progress={progress} />}
 
         {isLoading && (
           <Box sx={{ py: 0.75, display: 'flex', gap: 1.25, alignItems: 'center' }}>
