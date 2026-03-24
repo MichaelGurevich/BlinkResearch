@@ -11,6 +11,7 @@ sys.setrecursionlimit(10000)
 
 import httpx
 from deepagents.backends.utils import create_file_data
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import InjectedToolArg, InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
@@ -20,13 +21,9 @@ from pydantic import BaseModel, Field
 from tavily import TavilyClient
 from typing_extensions import Annotated, Literal
 
-from ..llm import summarization_model
 from ..state import DeepAgentState
 from .prompts import SUMMARIZE_WEB_SEARCH
 from .utils import get_today_str
-
-
-tavily_client = TavilyClient(api_key=os.environ.get("TAVILY_KEY"))
 
 
 class Summary(BaseModel):
@@ -37,6 +34,7 @@ class Summary(BaseModel):
 
 
 def run_tavily_search(
+    tavily_client: TavilyClient,
     search_query: str,
     max_results: int = 1,
     topic: Literal["general", "news", "finance"] = "general",
@@ -51,7 +49,10 @@ def run_tavily_search(
     )
 
 
-def summarize_webpage_content(webpage_content: str) -> Summary:
+def summarize_webpage_content(
+    summarization_model: BaseChatModel,
+    webpage_content: str,
+) -> Summary:
     """Summarize webpage content using the configured summarization model."""
     try:
         structured_model = summarization_model.with_structured_output(Summary)
@@ -77,7 +78,10 @@ def summarize_webpage_content(webpage_content: str) -> Summary:
         )
 
 
-def process_search_results(results: dict) -> list[dict]:
+def process_search_results(
+    results: dict,
+    summarization_model: BaseChatModel,
+) -> list[dict]:
     """Process search results by summarizing content where available."""
     processed_results = []
     http_client = httpx.Client(timeout=30.0)
@@ -90,7 +94,7 @@ def process_search_results(results: dict) -> list[dict]:
             response = http_client.get(url)
             if response.status_code == 200:
                 raw_content = markdownify(response.text)
-                summary_obj = summarize_webpage_content(raw_content)
+                summary_obj = summarize_webpage_content(summarization_model, raw_content)
             else:
                 raw_content = result.get("raw_content", "")
                 summary_obj = Summary(
@@ -130,41 +134,49 @@ def process_search_results(results: dict) -> list[dict]:
     return processed_results
 
 
-@tool(parse_docstring=True)
-def tavily_search(
-    query: str,
-    state: Annotated[DeepAgentState, InjectedState],
-    tool_call_id: Annotated[str, InjectedToolCallId],
-    max_results: Annotated[int, InjectedToolArg] = 1,
-    topic: Annotated[Literal["general", "news", "finance"], InjectedToolArg] = "general",
-) -> Command:
-    """Search web and save detailed results to files while returning minimal context.
+def build_tavily_search_tool(
+    tavily_api_key: str,
+    summarization_model: BaseChatModel,
+):
+    """Create a Tavily search tool bound to a specific runtime API key."""
+    tavily_client = TavilyClient(api_key=tavily_api_key or os.environ.get("TAVILY_KEY"))
 
-    Args:
-        query: Search query to execute
-        state: Injected agent state for file storage
-        tool_call_id: Injected tool call identifier
-        max_results: Maximum number of results to return (default: 1)
-        topic: Topic filter - 'general', 'news', or 'finance' (default: 'general')
+    @tool(parse_docstring=True)
+    def tavily_search(
+        query: str,
+        state: Annotated[DeepAgentState, InjectedState],
+        tool_call_id: Annotated[str, InjectedToolCallId],
+        max_results: Annotated[int, InjectedToolArg] = 1,
+        topic: Annotated[Literal["general", "news", "finance"], InjectedToolArg] = "general",
+    ) -> Command:
+        """Search web and save detailed results to files while returning minimal context.
 
-    Returns:
-        Command that saves full results to files and provides minimal summary
-    """
-    search_results = run_tavily_search(
-        query,
-        max_results=max_results,
-        topic=topic,
-        include_raw_content=True,
-    )
-    processed_results = process_search_results(search_results)
+        Args:
+            query: Search query to execute
+            state: Injected agent state for file storage
+            tool_call_id: Injected tool call identifier
+            max_results: Maximum number of results to return (default: 1)
+            topic: Topic filter - 'general', 'news', or 'finance' (default: 'general')
 
-    files = state.get("files", {})
-    saved_files = []
-    summaries = []
+        Returns:
+            Command that saves full results to files and provides minimal summary
+        """
+        search_results = run_tavily_search(
+            tavily_client,
+            query,
+            max_results=max_results,
+            topic=topic,
+            include_raw_content=True,
+        )
+        processed_results = process_search_results(search_results, summarization_model)
 
-    for result in processed_results:
-        filename = result["filename"]
-        file_content = f"""# Search Result: {result['title']}
+        files = state.get("files", {})
+        saved_files = []
+        summaries = []
+
+        for result in processed_results:
+            filename = result["filename"]
+            file_content = f"""# Search Result: {result['title']}
 
 **URL:** {result['url']}
 **Query:** {query}
@@ -177,23 +189,25 @@ def tavily_search(
 {result['raw_content'] if result['raw_content'] else 'No raw content available'}
 """
 
-        files[filename] = create_file_data(file_content)
-        saved_files.append(filename)
-        summaries.append(f"- {filename}: {result['summary']}...")
+            files[filename] = create_file_data(file_content)
+            saved_files.append(filename)
+            summaries.append(f"- {filename}: {result['summary']}...")
 
-    summary_text = f"""Found {len(processed_results)} result(s) for '{query}':
+        summary_text = f"""Found {len(processed_results)} result(s) for '{query}':
 
 {chr(10).join(summaries)}
 
 Files: {', '.join(saved_files)}
 Use read_file() to access full details when needed."""
 
-    return Command(
-        update={
-            "files": files,
-            "messages": [ToolMessage(summary_text, tool_call_id=tool_call_id)],
-        }
-    )
+        return Command(
+            update={
+                "files": files,
+                "messages": [ToolMessage(summary_text, tool_call_id=tool_call_id)],
+            }
+        )
+
+    return tavily_search
 
 
 @tool(parse_docstring=True)

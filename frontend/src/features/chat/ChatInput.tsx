@@ -1,5 +1,5 @@
 import { ArrowUpward } from '@mui/icons-material';
-import { Box, IconButton, TextField, Typography } from '@mui/material';
+import { Box, IconButton, InputBase, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react';
 
@@ -20,7 +20,7 @@ export function ChatInput({ input, onChange, onSend, disabled }: ChatInputProps)
     }
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       if (canSend) onSend();
@@ -56,12 +56,12 @@ export function ChatInput({ input, onChange, onSend, disabled }: ChatInputProps)
           py: 1.1,
           transition: 'border-color 180ms ease-out, box-shadow 180ms ease-out',
           '&:focus-within': {
-            borderColor: alpha(theme.palette.primary.main, 0.48),
-            boxShadow: `0 0 0 4px ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.18 : 0.12)}`,
+            borderColor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.16 : 0.12),
+            boxShadow: `0 8px 24px ${alpha('#000000', theme.palette.mode === 'dark' ? 0.18 : 0.06)}`,
           },
         })}
       >
-        <TextField
+        <InputBase
           value={input}
           onChange={(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             onChange(event.target.value)
@@ -71,23 +71,18 @@ export function ChatInput({ input, onChange, onSend, disabled }: ChatInputProps)
           aria-label="Message Blink Research"
           multiline
           maxRows={6}
-          fullWidth
           disabled={disabled}
-          variant="outlined"
-          InputProps={{
-            sx: {
-              '& fieldset': {
-                border: 'none',
-              },
-              '&.Mui-focused fieldset': {
-                border: 'none',
-                boxShadow: 'none',
-              },
-              '& textarea': {
-                fontSize: 15,
-                lineHeight: 1.5,
-                py: 0.75,
-              },
+          sx={{
+            flex: 1,
+            alignSelf: 'center',
+            color: 'text.primary',
+            fontSize: 15,
+            lineHeight: 1.5,
+            '& .MuiInputBase-input': {
+              py: 0.75,
+            },
+            '& .MuiInputBase-inputMultiline': {
+              py: 0.75,
             },
           }}
         />

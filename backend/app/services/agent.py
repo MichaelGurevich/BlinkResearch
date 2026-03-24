@@ -6,7 +6,9 @@ import uuid
 from collections.abc import Iterable
 from typing import Any
 
-from app.agents import research_agent
+from fastapi import HTTPException
+
+from app.agents import build_research_agent
 from app.schema.request import AgentInvokeRequest, AgentInvokeResponse
 
 
@@ -47,6 +49,20 @@ async def invoke_research_agent(request: AgentInvokeRequest) -> AgentInvokeRespo
     """Invoke the orchestrator agent and return the final response payload."""
     thread_id = request.thread_id or str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
+    api_keys = request.api_keys
+
+    if api_keys is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Missing API keys. Provide both Tavily and Google AI Studio keys in the request."
+            ),
+        )
+
+    research_agent = build_research_agent(
+        google_studio_api_key=api_keys.google_studio_api_key,
+        tavily_api_key=api_keys.tavily_api_key,
+    )
 
     result = await research_agent.ainvoke(
         {"messages": [{"role": "user", "content": request.query}]},

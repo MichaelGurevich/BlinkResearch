@@ -1,11 +1,14 @@
-import { Add, DarkModeOutlined, LightModeOutlined } from '@mui/icons-material';
+import { Add, DarkModeOutlined, LightModeOutlined, SettingsOutlined } from '@mui/icons-material';
 import type { PaletteMode } from '@mui/material';
 import { Box, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { useCallback, useState } from 'react';
+import { ApiKeysModal } from './ApiKeysModal';
 import { ChatInput } from './ChatInput';
 import { ChatWindow } from './ChatWindow';
-import type { Message } from './types';
+import type { ApiKeySettings, Message } from './types';
+
+const API_KEYS_STORAGE_KEY = 'blinkresearch-api-keys';
 
 interface InvokeAgentResponse {
   response: string;
@@ -15,6 +18,7 @@ interface InvokeAgentResponse {
 const invokeAgent = async (
   query: string,
   threadId: string | null,
+  apiKeys: ApiKeySettings,
 ): Promise<InvokeAgentResponse> => {
   const response = await fetch('/api/agent/invoke', {
     method: 'POST',
@@ -24,6 +28,10 @@ const invokeAgent = async (
     body: JSON.stringify({
       query,
       thread_id: threadId,
+      api_keys: {
+        tavily_api_key: apiKeys.tavilyApiKey,
+        google_studio_api_key: apiKeys.googleStudioApiKey,
+      },
     }),
   });
 
@@ -49,6 +57,42 @@ const promptSuggestions = [
   'Translate and clean the content from this test image.',
 ];
 
+const topNavItems = ['Chat', 'Research', 'Docs'];
+
+const getStoredApiKeys = (): ApiKeySettings => {
+  if (typeof window === 'undefined') {
+    return {
+      tavilyApiKey: '',
+      googleStudioApiKey: '',
+    };
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(API_KEYS_STORAGE_KEY);
+    if (!storedValue) {
+      return {
+        tavilyApiKey: '',
+        googleStudioApiKey: '',
+      };
+    }
+
+    const parsedValue = JSON.parse(storedValue) as Partial<ApiKeySettings>;
+    return {
+      tavilyApiKey: typeof parsedValue.tavilyApiKey === 'string' ? parsedValue.tavilyApiKey : '',
+      googleStudioApiKey:
+        typeof parsedValue.googleStudioApiKey === 'string' ? parsedValue.googleStudioApiKey : '',
+    };
+  } catch {
+    return {
+      tavilyApiKey: '',
+      googleStudioApiKey: '',
+    };
+  }
+};
+
+const hasConfiguredApiKeys = (apiKeys: ApiKeySettings) =>
+  apiKeys.tavilyApiKey.trim().length > 0 && apiKeys.googleStudioApiKey.trim().length > 0;
+
 interface ChatPageProps {
   mode: PaletteMode;
   onToggleColorMode: () => void;
@@ -59,11 +103,21 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [input, setInput] = useState('');
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [apiKeys, setApiKeys] = useState<ApiKeySettings>(getStoredApiKeys);
+  const [draftApiKeys, setDraftApiKeys] = useState<ApiKeySettings>(getStoredApiKeys);
+  const [isApiKeysModalOpen, setIsApiKeysModalOpen] = useState(
+    () => !hasConfiguredApiKeys(getStoredApiKeys()),
+  );
 
   const handleSend = useCallback(
     async (nextContent?: string) => {
       const trimmedInput = (nextContent ?? input).trim();
       if (!trimmedInput || isLoading) {
+        return;
+      }
+
+      if (!hasConfiguredApiKeys(apiKeys)) {
+        setIsApiKeysModalOpen(true);
         return;
       }
 
@@ -73,7 +127,7 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
       setIsLoading(true);
 
       try {
-        const response = await invokeAgent(trimmedInput, threadId);
+        const response = await invokeAgent(trimmedInput, threadId, apiKeys);
         setThreadId(response.thread_id);
 
         const assistantMessage = createMessage('assistant', response.response);
@@ -90,8 +144,24 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
         setIsLoading(false);
       }
     },
-    [input, isLoading, threadId],
+    [apiKeys, input, isLoading, threadId],
   );
+
+  const handleSaveApiKeys = useCallback(() => {
+    const normalizedApiKeys = {
+      tavilyApiKey: draftApiKeys.tavilyApiKey.trim(),
+      googleStudioApiKey: draftApiKeys.googleStudioApiKey.trim(),
+    };
+
+    if (!hasConfiguredApiKeys(normalizedApiKeys)) {
+      return;
+    }
+
+    window.localStorage.setItem(API_KEYS_STORAGE_KEY, JSON.stringify(normalizedApiKeys));
+    setApiKeys(normalizedApiKeys);
+    setDraftApiKeys(normalizedApiKeys);
+    setIsApiKeysModalOpen(false);
+  }, [draftApiKeys]);
 
   return (
     <Box
@@ -108,10 +178,10 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
     >
       <Box
         sx={(theme) => ({
-          height: 68,
+          height: 56,
           borderBottom: '1px solid',
           borderColor: 'divider',
-          px: { xs: 2, sm: 3 },
+          px: { xs: 1.75, sm: 2.5 },
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -120,58 +190,117 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
           zIndex: 10,
           backgroundColor: alpha(
             theme.palette.background.default,
-            theme.palette.mode === 'dark' ? 0.88 : 0.82,
+            theme.palette.mode === 'dark' ? 0.94 : 0.88,
           ),
-          backdropFilter: 'blur(16px)',
+          backdropFilter: 'blur(18px)',
         })}
       >
-        <Stack direction="row" spacing={1.5} alignItems="center">
+        <Stack direction="row" spacing={1.25} alignItems="center">
           <Box
             sx={(theme) => ({
-              width: 34,
-              height: 34,
-              borderRadius: 3,
+              width: 26,
+              height: 26,
+              borderRadius: '50%',
               display: 'grid',
               placeItems: 'center',
-              fontWeight: 700,
-              fontSize: 13,
+              fontWeight: 600,
+              fontSize: 10,
               letterSpacing: '-0.03em',
-              color: theme.palette.mode === 'dark' ? '#0f1111' : '#ffffff',
-              backgroundColor: 'primary.main',
-              boxShadow: `0 14px 32px ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.16)}`,
+              color: 'text.primary',
+              border: '1px solid',
+              borderColor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.18 : 0.12),
+              backgroundColor: alpha(
+                theme.palette.background.paper,
+                theme.palette.mode === 'dark' ? 0.46 : 0.92,
+              ),
             })}
           >
             BR
           </Box>
-          <Box>
-            <Typography variant="subtitle1" sx={{ lineHeight: 1.1 }}>
-              Blink Research
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Conversational analysis workspace
-            </Typography>
-          </Box>
+          <Typography
+            variant="subtitle2"
+            sx={{ fontSize: 18, fontWeight: 600, letterSpacing: '-0.02em', color: 'text.primary' }}
+          >
+            Blink Research
+          </Typography>
         </Stack>
 
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Stack
+            direction="row"
+            spacing={2.25}
+            alignItems="center"
+            sx={{ display: { xs: 'none', md: 'flex' }, mr: 0.5 }}
+          >
+            {topNavItems.map((item) => (
+              <Typography
+                key={item}
+                sx={(theme) => ({
+                  fontSize: 13.5,
+                  fontWeight: item === 'Chat' ? 600 : 500,
+                  color:
+                    item === 'Chat'
+                      ? theme.palette.text.primary
+                      : alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.52 : 0.46),
+                  letterSpacing: '-0.01em',
+                })}
+              >
+                {item}
+              </Typography>
+            ))}
+          </Stack>
+
+          <Tooltip title="API Keys" arrow>
+            <IconButton
+              size="small"
+              onClick={() => {
+                setDraftApiKeys(apiKeys);
+                setIsApiKeysModalOpen(true);
+              }}
+              sx={(theme) => ({
+                width: 32,
+                height: 32,
+                border: '1px solid',
+                borderColor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.1 : 0.08),
+                color: hasConfiguredApiKeys(apiKeys) ? 'primary.main' : 'text.secondary',
+                backgroundColor: alpha(
+                  theme.palette.background.paper,
+                  theme.palette.mode === 'dark' ? 0.28 : 0.74,
+                ),
+                '&:hover': {
+                  color: hasConfiguredApiKeys(apiKeys) ? 'primary.main' : 'text.primary',
+                  borderColor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.18 : 0.14),
+                  backgroundColor: alpha(
+                    theme.palette.background.paper,
+                    theme.palette.mode === 'dark' ? 0.42 : 0.94,
+                  ),
+                },
+              })}
+            >
+              <SettingsOutlined fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
           <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} arrow>
             <IconButton
               size="small"
               onClick={onToggleColorMode}
               sx={(theme) => ({
+                width: 32,
+                height: 32,
                 border: '1px solid',
-                borderColor: 'divider',
+                borderColor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.1 : 0.08),
                 color: 'text.secondary',
                 backgroundColor: alpha(
                   theme.palette.background.paper,
-                  theme.palette.mode === 'dark' ? 0.44 : 0.74,
+                  theme.palette.mode === 'dark' ? 0.28 : 0.74,
                 ),
                 '&:hover': {
                   color: 'text.primary',
-                  borderColor: alpha(theme.palette.primary.main, 0.4),
+                  borderColor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.18 : 0.14),
                   backgroundColor: alpha(
                     theme.palette.background.paper,
-                    theme.palette.mode === 'dark' ? 0.72 : 0.94,
+                    theme.palette.mode === 'dark' ? 0.42 : 0.94,
                   ),
                 },
               })}
@@ -188,19 +317,21 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
             <IconButton
               size="small"
               sx={(theme) => ({
+                width: 32,
+                height: 32,
                 border: '1px solid',
-                borderColor: 'divider',
+                borderColor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.1 : 0.08),
                 color: 'text.secondary',
                 backgroundColor: alpha(
                   theme.palette.background.paper,
-                  theme.palette.mode === 'dark' ? 0.44 : 0.74,
+                  theme.palette.mode === 'dark' ? 0.28 : 0.74,
                 ),
                 '&:hover': {
                   color: 'text.primary',
-                  borderColor: alpha(theme.palette.primary.main, 0.4),
+                  borderColor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.18 : 0.14),
                   backgroundColor: alpha(
                     theme.palette.background.paper,
-                    theme.palette.mode === 'dark' ? 0.72 : 0.94,
+                    theme.palette.mode === 'dark' ? 0.42 : 0.94,
                   ),
                 },
               })}
@@ -239,6 +370,20 @@ export default function ChatPage({ mode, onToggleColorMode }: ChatPageProps) {
           disabled={isLoading}
         />
       </Box>
+
+      <ApiKeysModal
+        open={isApiKeysModalOpen}
+        value={draftApiKeys}
+        canClose={hasConfiguredApiKeys(apiKeys)}
+        onChange={setDraftApiKeys}
+        onClose={() => {
+          if (hasConfiguredApiKeys(apiKeys)) {
+            setDraftApiKeys(apiKeys);
+            setIsApiKeysModalOpen(false);
+          }
+        }}
+        onSave={handleSaveApiKeys}
+      />
     </Box>
   );
 }

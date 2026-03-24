@@ -13,3 +13,8 @@ export interface ConversationState {
   isLoading: boolean
   error: string | null
 }
+
+export interface ApiKeySettings {
+  tavilyApiKey: string
+  googleStudioApiKey: string
+}
